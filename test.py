@@ -80,6 +80,8 @@ def computingScores(mod, features, labels):
     for i in range(len(predictions)):
         if predictions[i] == labels[i]:
             score += 1
+    np.savetxt("labelsPredicted.txt", np.array(predictions), fmt="%s")
+    np.savetxt("labelsTest.txt", np.array(labels), fmt="%s")
     return score / len(labels)
 
 """
