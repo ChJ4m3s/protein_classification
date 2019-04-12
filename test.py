@@ -1,6 +1,8 @@
 """
  ====================================
 ||  Classification on the PROTEINS  ||
+||          Kernel testing          ||
+||  ------------------------------  ||
 ||  Giacomo Chiarot                 ||
 ||  giacomochiarot@gmail.com        ||
  ====================================
@@ -8,9 +10,6 @@
 from __future__ import print_function
 print(__doc__)
 
-from sklearn.model_selection import cross_val_score
-from matplotlib import pylab as plt
-from sklearn.manifold import Isomap
 from grakel import GraphKernel
 from grakel import Graph
 from sklearn import svm
@@ -21,24 +20,31 @@ Reads the list of files and returns the name of the files and their value which 
 """
 def readProteins():
     print("-- reading file list")
-    f = open("fileList.txt", "r")
     proteinNames = []
     labels = []
+    testLabels = []
+    f = open("testSet/fileList.txt", "r")
     for line in f:
         lineDivided = line.split(' ')
-        proteinNames.append(lineDivided[0])
+        proteinNames.append('testSet/' + lineDivided[0])
         labels.append(int(lineDivided[1]))
     f.close()
-    return proteinNames, labels
+    f = open("trainingSet/fileList.txt", "r")
+    for line in f:
+        lineDivided = line.split(' ')
+        proteinNames.append('trainingSet/' + lineDivided[0])
+        testLabels.append(int(lineDivided[1]))
+    f.close()
+    return proteinNames, labels, testLabels
 
 """
 Reads the list of arcs for each protein and stores them as graphs
 """
-def readGraphs(proteinNames):
+def readGraphs():
+    proteinNames, labelValues, testLavelValues = readProteins()
     print("-- reading graphs")
     graphs = []
-    for name in proteinNames:
-        file = "output/" + name
+    for file in proteinNames:
         f = open(file, "r")
         graph = {}
         labels = {}
@@ -54,7 +60,27 @@ def readGraphs(proteinNames):
                 labels[values[1]] = values[1]
         f.close()
         graphs.append(Graph(graph, labels))
-    return graphs
+    return graphs, labelValues, testLavelValues
+
+"""
+Create the model for SVM
+"""
+def createModel(K, labels):
+    print("-- computing the score with SVM")
+    mod = svm.SVC(kernel='precomputed')
+    mod.fit(K, labels)
+    return mod
+
+"""
+Computing the score
+"""
+def computingScores(mod, features, labels):
+    predictions = mod.predict(features)
+    score = 0
+    for i in range(len(predictions)):
+        if predictions[i] == labels[i]:
+            score += 1
+    return score / len(labels)
 
 """
 Computes the weisfeiler_lehman kernel
@@ -64,21 +90,23 @@ def computeKernel(graphs):
     wl_kernel = GraphKernel(kernel = [{"name": "weisfeiler_lehman", "niter": 5}, {"name": "subtree_wl"}], normalize=True)
     return  wl_kernel.fit_transform(graphs)
 
-"""
-Computes 10-times cross validation with svm and returns the mean of results
-"""
-def runSVM(K, labels):
-    print("-- computing scores with SVM")
-    mod = svm.SVC(kernel='precomputed')
-    scores = cross_val_score(mod, K, labels, cv=10)
-    return np.mean(scores)
+def getFeatures():
+    graphs, labels, testLabels = readGraphs()
+    K = computeKernel(graphs)
+    n = len(K) - len(labels)
+    features = K[n:]
+    result = []
+    for i in range(len(features)):
+        row = features[i]
+        row = row[: len(row) - len(labels)]
+        result.append(row)
+    return result, labels, testLabels
 
 def main():
-    proteinNames, labels  = readProteins()
-    graphs = readGraphs(proteinNames)
-    K = computeKernel(graphs)
-    np.savetxt("similarity_matrix.txt", np.array(K), fmt="%s")
-    result = runSVM(K, labels)
+    features, labels, testLabels = getFeatures()
+    K = np.loadtxt("kernel.txt")
+    model = createModel(K, testLabels)
+    result = computingScores(model, features, labels)
     print("Accuracy is: " + str(result))
 
 if __name__ == "__main__":
